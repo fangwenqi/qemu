@@ -1292,6 +1292,17 @@ DisplaySurface *qemu_create_displaysurface_from(int width, int height,
     return surface;
 }
 
+DisplaySurface *qemu_create_displaysurface_pixman(pixman_image_t *image)
+{
+    DisplaySurface *surface = g_new0(DisplaySurface, 1);
+
+    trace_displaysurface_create_pixman(surface);
+    surface->format = pixman_image_get_format(image);
+    surface->image = pixman_image_ref(image);
+
+    return surface;
+}
+
 static void qemu_unmap_displaysurface_guestmem(pixman_image_t *image,
                                                void *unused)
 {
@@ -2069,7 +2080,7 @@ static VcHandler *vc_handler = text_console_init;
 static CharDriverState *vc_init(const char *id, ChardevBackend *backend,
                                 ChardevReturn *ret, Error **errp)
 {
-    return vc_handler(backend->u.vc, errp);
+    return vc_handler(backend->u.vc.data, errp);
 }
 
 void register_vc_handler(VcHandler *handler)
@@ -2111,7 +2122,7 @@ static void qemu_chr_parse_vc(QemuOpts *opts, ChardevBackend *backend,
     int val;
     ChardevVC *vc;
 
-    vc = backend->u.vc = g_new0(ChardevVC, 1);
+    vc = backend->u.vc.data = g_new0(ChardevVC, 1);
     qemu_chr_parse_common(opts, qapi_ChardevVC_base(vc));
 
     val = qemu_opt_get_number(opts, "width", 0);

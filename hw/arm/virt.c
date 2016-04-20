@@ -29,6 +29,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "qapi/error.h"
 #include "hw/sysbus.h"
 #include "hw/arm/arm.h"
 #include "hw/arm/primecell.h"
@@ -581,11 +582,11 @@ static void create_rtc(const VirtBoardInfo *vbi, qemu_irq *pic)
     g_free(nodename);
 }
 
-static DeviceState *pl061_dev;
+static DeviceState *gpio_key_dev;
 static void virt_powerdown_req(Notifier *n, void *opaque)
 {
     /* use gpio Pin 3 for power button event */
-    qemu_set_irq(qdev_get_gpio_in(pl061_dev, 3), 1);
+    qemu_set_irq(qdev_get_gpio_in(gpio_key_dev, 0), 1);
 }
 
 static Notifier virt_system_powerdown_notifier = {
@@ -595,6 +596,7 @@ static Notifier virt_system_powerdown_notifier = {
 static void create_gpio(const VirtBoardInfo *vbi, qemu_irq *pic)
 {
     char *nodename;
+    DeviceState *pl061_dev;
     hwaddr base = vbi->memmap[VIRT_GPIO].base;
     hwaddr size = vbi->memmap[VIRT_GPIO].size;
     int irq = vbi->irqmap[VIRT_GPIO];
@@ -617,6 +619,8 @@ static void create_gpio(const VirtBoardInfo *vbi, qemu_irq *pic)
     qemu_fdt_setprop_string(vbi->fdt, nodename, "clock-names", "apb_pclk");
     qemu_fdt_setprop_cell(vbi->fdt, nodename, "phandle", phandle);
 
+    gpio_key_dev = sysbus_create_simple("gpio-key", -1,
+                                        qdev_get_gpio_in(pl061_dev, 3));
     qemu_fdt_add_subnode(vbi->fdt, "/gpio-keys");
     qemu_fdt_setprop_string(vbi->fdt, "/gpio-keys", "compatible", "gpio-keys");
     qemu_fdt_setprop_cell(vbi->fdt, "/gpio-keys", "#size-cells", 0);
@@ -1345,7 +1349,32 @@ static void virt_set_gic_version(Object *obj, const char *value, Error **errp)
     }
 }
 
-static void virt_instance_init(Object *obj)
+static void virt_machine_class_init(ObjectClass *oc, void *data)
+{
+    MachineClass *mc = MACHINE_CLASS(oc);
+
+    mc->init = machvirt_init;
+    /* Start max_cpus at the maximum QEMU supports. We'll further restrict
+     * it later in machvirt_init, where we have more information about the
+     * configuration of the particular instance.
+     */
+    mc->max_cpus = MAX_CPUMASK_BITS;
+    mc->has_dynamic_sysbus = true;
+    mc->block_default_type = IF_VIRTIO;
+    mc->no_cdrom = 1;
+    mc->pci_allow_0_address = true;
+}
+
+static const TypeInfo virt_machine_info = {
+    .name          = TYPE_VIRT_MACHINE,
+    .parent        = TYPE_MACHINE,
+    .abstract      = true,
+    .instance_size = sizeof(VirtMachineState),
+    .class_size    = sizeof(VirtMachineClass),
+    .class_init    = virt_machine_class_init,
+};
+
+static void virt_2_6_instance_init(Object *obj)
 {
     VirtMachineState *vms = VIRT_MACHINE(obj);
 
@@ -1378,35 +1407,29 @@ static void virt_instance_init(Object *obj)
                                     "Valid values are 2, 3 and host", NULL);
 }
 
-static void virt_class_init(ObjectClass *oc, void *data)
+static void virt_2_6_class_init(ObjectClass *oc, void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
+    static GlobalProperty compat_props[] = {
+        { /* end of list */ }
+    };
 
-    mc->desc = "ARM Virtual Machine",
-    mc->init = machvirt_init;
-    /* Start max_cpus at the maximum QEMU supports. We'll further restrict
-     * it later in machvirt_init, where we have more information about the
-     * configuration of the particular instance.
-     */
-    mc->max_cpus = MAX_CPUMASK_BITS;
-    mc->has_dynamic_sysbus = true;
-    mc->block_default_type = IF_VIRTIO;
-    mc->no_cdrom = 1;
-    mc->pci_allow_0_address = true;
+    mc->desc = "QEMU 2.6 ARM Virtual Machine";
+    mc->alias = "virt";
+    mc->compat_props = compat_props;
 }
 
 static const TypeInfo machvirt_info = {
-    .name = TYPE_VIRT_MACHINE,
-    .parent = TYPE_MACHINE,
-    .instance_size = sizeof(VirtMachineState),
-    .instance_init = virt_instance_init,
-    .class_size = sizeof(VirtMachineClass),
-    .class_init = virt_class_init,
+    .name = MACHINE_TYPE_NAME("virt-2.6"),
+    .parent = TYPE_VIRT_MACHINE,
+    .instance_init = virt_2_6_instance_init,
+    .class_init = virt_2_6_class_init,
 };
 
 static void machvirt_machine_init(void)
 {
+    type_register_static(&virt_machine_info);
     type_register_static(&machvirt_info);
 }
 
-machine_init(machvirt_machine_init);
+type_init(machvirt_machine_init);

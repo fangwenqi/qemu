@@ -22,6 +22,9 @@
  */
 
 #include "qemu/osdep.h"
+#include "qapi/error.h"
+#include "qemu-common.h"
+#include "cpu.h"
 #include "hw/sysbus.h"
 #include "hw/arm/arm.h"
 #include "hw/arm/primecell.h"
@@ -800,4 +803,4 @@ static void vexpress_machine_init(void)
     type_register_static(&vexpress_a15_info);
 }
 
-machine_init(vexpress_machine_init);
+type_init(vexpress_machine_init);

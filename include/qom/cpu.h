@@ -20,14 +20,12 @@
 #ifndef QEMU_CPU_H
 #define QEMU_CPU_H
 
-#include <setjmp.h>
 #include "hw/qdev-core.h"
 #include "disas/bfd.h"
 #include "exec/hwaddr.h"
 #include "exec/memattrs.h"
 #include "qemu/queue.h"
 #include "qemu/thread.h"
-#include "qemu/typedefs.h"
 
 typedef int (*WriteCoreDumpFunction)(const void *buf, size_t size,
                                      void *opaque);

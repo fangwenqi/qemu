@@ -16,6 +16,7 @@
 #include "block/blockjob.h"
 #include "block/block_int.h"
 #include "sysemu/block-backend.h"
+#include "qapi/error.h"
 #include "qapi/qmp/qerror.h"
 #include "qemu/ratelimit.h"
 #include "qemu/bitmap.h"
@@ -649,7 +650,7 @@ static void coroutine_fn mirror_run(void *opaque)
              * mirror_populate runs.
              */
             trace_mirror_before_drain(s, cnt);
-            bdrv_drain(bs);
+            bdrv_co_drain(bs);
             cnt = bdrv_get_dirty_count(s->dirty_bitmap);
         }
 
@@ -855,7 +856,6 @@ static void mirror_start_job(BlockDriverState *bs, BlockDriverState *target,
 
     bdrv_op_block_all(s->target, s->common.blocker);
 
-    bdrv_set_enable_write_cache(s->target, true);
     if (s->target->blk) {
         blk_set_on_error(s->target->blk, on_target_error, on_target_error);
         blk_iostatus_enable(s->target->blk);

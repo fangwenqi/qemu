@@ -28,6 +28,7 @@
 
 #include "qemu/osdep.h"
 #include "block/nbd-client.h"
+#include "qapi/error.h"
 #include "qemu/uri.h"
 #include "block/block_int.h"
 #include "qemu/module.h"
@@ -35,7 +36,7 @@
 #include "qapi/qmp/qjson.h"
 #include "qapi/qmp/qint.h"
 #include "qapi/qmp/qstring.h"
-
+#include "qemu/cutils.h"
 
 #define EN_OPTSTR ":exportname="
 
@@ -206,13 +207,13 @@ static SocketAddress *nbd_config(BDRVNBDState *s, QDict *options, char **export,
     if (qdict_haskey(options, "path")) {
         UnixSocketAddress *q_unix;
         saddr->type = SOCKET_ADDRESS_KIND_UNIX;
-        q_unix = saddr->u.q_unix = g_new0(UnixSocketAddress, 1);
+        q_unix = saddr->u.q_unix.data = g_new0(UnixSocketAddress, 1);
         q_unix->path = g_strdup(qdict_get_str(options, "path"));
         qdict_del(options, "path");
     } else {
         InetSocketAddress *inet;
         saddr->type = SOCKET_ADDRESS_KIND_INET;
-        inet = saddr->u.inet = g_new0(InetSocketAddress, 1);
+        inet = saddr->u.inet.data = g_new0(InetSocketAddress, 1);
         inet->host = g_strdup(qdict_get_str(options, "host"));
         if (!qdict_get_try_str(options, "port")) {
             inet->port = g_strdup_printf("%d", NBD_DEFAULT_PORT);
@@ -321,7 +322,7 @@ static int nbd_open(BlockDriverState *bs, QDict *options, int flags,
             error_setg(errp, "TLS only supported over IP sockets");
             goto error;
         }
-        hostname = saddr->u.inet->host;
+        hostname = saddr->u.inet.data->host;
     }
 
     /* establish TCP connection, return error if it fails
@@ -354,10 +355,29 @@ static int nbd_co_readv(BlockDriverState *bs, int64_t sector_num,
     return nbd_client_co_readv(bs, sector_num, nb_sectors, qiov);
 }
 
+static int nbd_co_writev_flags(BlockDriverState *bs, int64_t sector_num,
+                               int nb_sectors, QEMUIOVector *qiov, int flags)
+{
+    int ret;
+
+    ret = nbd_client_co_writev(bs, sector_num, nb_sectors, qiov, &flags);
+    if (ret < 0) {
+        return ret;
+    }
+
+    /* The flag wasn't sent to the server, so we need to emulate it with an
+     * explicit flush */
+    if (flags & BDRV_REQ_FUA) {
+        ret = nbd_client_co_flush(bs);
+    }
+
+    return ret;
+}
+
 static int nbd_co_writev(BlockDriverState *bs, int64_t sector_num,
                          int nb_sectors, QEMUIOVector *qiov)
 {
-    return nbd_client_co_writev(bs, sector_num, nb_sectors, qiov);
+    return nbd_co_writev_flags(bs, sector_num, nb_sectors, qiov, 0);
 }
 
 static int nbd_co_flush(BlockDriverState *bs)
@@ -457,6 +477,8 @@ static BlockDriver bdrv_nbd = {
     .bdrv_file_open             = nbd_open,
     .bdrv_co_readv              = nbd_co_readv,
     .bdrv_co_writev             = nbd_co_writev,
+    .bdrv_co_writev_flags       = nbd_co_writev_flags,
+    .supported_write_flags      = BDRV_REQ_FUA,
     .bdrv_close                 = nbd_close,
     .bdrv_co_flush_to_os        = nbd_co_flush,
     .bdrv_co_discard            = nbd_co_discard,
@@ -475,6 +497,8 @@ static BlockDriver bdrv_nbd_tcp = {
     .bdrv_file_open             = nbd_open,
     .bdrv_co_readv              = nbd_co_readv,
     .bdrv_co_writev             = nbd_co_writev,
+    .bdrv_co_writev_flags       = nbd_co_writev_flags,
+    .supported_write_flags      = BDRV_REQ_FUA,
     .bdrv_close                 = nbd_close,
     .bdrv_co_flush_to_os        = nbd_co_flush,
     .bdrv_co_discard            = nbd_co_discard,
@@ -493,6 +517,8 @@ static BlockDriver bdrv_nbd_unix = {
     .bdrv_file_open             = nbd_open,
     .bdrv_co_readv              = nbd_co_readv,
     .bdrv_co_writev             = nbd_co_writev,
+    .bdrv_co_writev_flags       = nbd_co_writev_flags,
+    .supported_write_flags      = BDRV_REQ_FUA,
     .bdrv_close                 = nbd_close,
     .bdrv_co_flush_to_os        = nbd_co_flush,
     .bdrv_co_discard            = nbd_co_discard,

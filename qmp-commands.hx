@@ -3683,7 +3683,7 @@ Enable/Disable migration capabilities
 - "zero-blocks": compress zero blocks during block migration
 - "compress": use multiple compression threads to accelerate live migration
 - "events": generate events for each migration state change
-- "x-postcopy-ram": postcopy mode for live migration
+- "postcopy-ram": postcopy mode for live migration
 
 Arguments:
 
@@ -3713,7 +3713,7 @@ Query current migration capabilities
          - "zero-blocks" : Zero Blocks state (json-bool)
          - "compress": Multiple compression threads state (json-bool)
          - "events": Migration state change event state (json-bool)
-         - "x-postcopy-ram": postcopy ram state (json-bool)
+         - "postcopy-ram": postcopy ram state (json-bool)
 
 Arguments:
 
@@ -3727,7 +3727,7 @@ Example:
      {"state": false, "capability": "zero-blocks"},
      {"state": false, "capability": "compress"},
      {"state": true, "capability": "events"},
-     {"state": false, "capability": "x-postcopy-ram"}
+     {"state": false, "capability": "postcopy-ram"}
    ]}
 
 EQMP
@@ -4853,3 +4853,30 @@ Example:
                  {"type": 0, "out-pport": 0, "pport": 0, "vlan-id": 3840,
                   "pop-vlan": 1, "id": 251658240}
    ]}
+
+EQMP
+
+#if defined TARGET_ARM
+    {
+        .name       = "query-gic-capabilities",
+        .args_type  = "",
+        .mhandler.cmd_new = qmp_marshal_query_gic_capabilities,
+    },
+#endif
+
+SQMP
+query-gic-capabilities
+---------------
+
+Return a list of GICCapability objects, describing supported GIC
+(Generic Interrupt Controller) versions.
+
+Arguments: None
+
+Example:
+
+-> { "execute": "query-gic-capabilities" }
+<- { "return": [{ "version": 2, "emulated": true, "kernel": false },
+                { "version": 3, "emulated": false, "kernel": true } ] }
+
+EQMP

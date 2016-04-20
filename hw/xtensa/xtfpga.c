@@ -26,6 +26,9 @@
  */
 
 #include "qemu/osdep.h"
+#include "qapi/error.h"
+#include "qemu-common.h"
+#include "cpu.h"
 #include "sysemu/sysemu.h"
 #include "hw/boards.h"
 #include "hw/loader.h"
@@ -510,4 +513,4 @@ static void xtensa_lx_machines_init(void)
     type_register_static(&xtensa_kc705_type);
 }
 
-machine_init(xtensa_lx_machines_init)
+type_init(xtensa_lx_machines_init)

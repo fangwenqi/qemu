@@ -3509,7 +3509,6 @@ static const ARMCPRegInfo el2_cp_reginfo[] = {
       .access = PL2_RW,
       .fieldoffset = offsetof(CPUARMState, elr_el[2]) },
     { .name = "ESR_EL2", .state = ARM_CP_STATE_AA64,
-      .type = ARM_CP_ALIAS,
       .opc0 = 3, .opc1 = 4, .crn = 5, .crm = 2, .opc2 = 0,
       .access = PL2_RW, .fieldoffset = offsetof(CPUARMState, cp15.esr_el[2]) },
     { .name = "FAR_EL2", .state = ARM_CP_STATE_AA64,
@@ -3565,11 +3564,15 @@ static const ARMCPRegInfo el2_cp_reginfo[] = {
       .fieldoffset = offsetof(CPUARMState, cp15.tcr_el[2]) },
     { .name = "VTCR", .state = ARM_CP_STATE_AA32,
       .cp = 15, .opc1 = 4, .crn = 2, .crm = 1, .opc2 = 2,
+      .type = ARM_CP_ALIAS,
       .access = PL2_RW, .accessfn = access_el3_aa32ns,
       .fieldoffset = offsetof(CPUARMState, cp15.vtcr_el2) },
     { .name = "VTCR_EL2", .state = ARM_CP_STATE_AA64,
       .opc0 = 3, .opc1 = 4, .crn = 2, .crm = 1, .opc2 = 2,
-      .access = PL2_RW, .type = ARM_CP_ALIAS,
+      .access = PL2_RW,
+      /* no .writefn needed as this can't cause an ASID change;
+       * no .raw_writefn or .resetfn needed as we never use mask/base_mask
+       */
       .fieldoffset = offsetof(CPUARMState, cp15.vtcr_el2) },
     { .name = "VTTBR", .state = ARM_CP_STATE_AA32,
       .cp = 15, .opc1 = 6, .crm = 2,
@@ -3744,11 +3747,6 @@ static const ARMCPRegInfo el3_cp_reginfo[] = {
       .access = PL1_RW, .accessfn = access_trap_aa32s_el1,
       .writefn = vbar_write, .resetvalue = 0,
       .fieldoffset = offsetof(CPUARMState, cp15.mvbar) },
-    { .name = "SCTLR_EL3", .state = ARM_CP_STATE_AA64,
-      .type = ARM_CP_ALIAS, /* reset handled by AArch32 view */
-      .opc0 = 3, .opc1 = 6, .crn = 1, .crm = 0, .opc2 = 0,
-      .access = PL3_RW, .raw_writefn = raw_write, .writefn = sctlr_write,
-      .fieldoffset = offsetof(CPUARMState, cp15.sctlr_el[3]) },
     { .name = "TTBR0_EL3", .state = ARM_CP_STATE_AA64,
       .opc0 = 3, .opc1 = 6, .crn = 2, .crm = 0, .opc2 = 0,
       .access = PL3_RW, .writefn = vmsa_ttbr_write, .resetvalue = 0,
@@ -3764,7 +3762,6 @@ static const ARMCPRegInfo el3_cp_reginfo[] = {
       .access = PL3_RW,
       .fieldoffset = offsetof(CPUARMState, elr_el[3]) },
     { .name = "ESR_EL3", .state = ARM_CP_STATE_AA64,
-      .type = ARM_CP_ALIAS,
       .opc0 = 3, .opc1 = 6, .crn = 5, .crm = 2, .opc2 = 0,
       .access = PL3_RW, .fieldoffset = offsetof(CPUARMState, cp15.esr_el[3]) },
     { .name = "FAR_EL3", .state = ARM_CP_STATE_AA64,
@@ -4641,12 +4638,20 @@ void register_cp_regs_for_features(ARMCPU *cpu)
     }
     if (arm_feature(env, ARM_FEATURE_EL3)) {
         define_arm_cp_regs(cpu, el3_cp_reginfo);
-        ARMCPRegInfo rvbar = {
-            .name = "RVBAR_EL3", .state = ARM_CP_STATE_AA64,
-            .opc0 = 3, .opc1 = 6, .crn = 12, .crm = 0, .opc2 = 1,
-            .type = ARM_CP_CONST, .access = PL3_R, .resetvalue = cpu->rvbar
+        ARMCPRegInfo el3_regs[] = {
+            { .name = "RVBAR_EL3", .state = ARM_CP_STATE_AA64,
+              .opc0 = 3, .opc1 = 6, .crn = 12, .crm = 0, .opc2 = 1,
+              .type = ARM_CP_CONST, .access = PL3_R, .resetvalue = cpu->rvbar },
+            { .name = "SCTLR_EL3", .state = ARM_CP_STATE_AA64,
+              .opc0 = 3, .opc1 = 6, .crn = 1, .crm = 0, .opc2 = 0,
+              .access = PL3_RW,
+              .raw_writefn = raw_write, .writefn = sctlr_write,
+              .fieldoffset = offsetof(CPUARMState, cp15.sctlr_el[3]),
+              .resetvalue = cpu->reset_sctlr },
+            REGINFO_SENTINEL
         };
-        define_one_arm_cp_reg(cpu, &rvbar);
+
+        define_arm_cp_regs(cpu, el3_regs);
     }
     /* The behaviour of NSACR is sufficiently various that we don't
      * try to describe it in a single reginfo:
@@ -7237,7 +7242,7 @@ static bool get_phys_addr_lpae(CPUARMState *env, target_ulong address,
     CPUState *cs = CPU(cpu);
     /* Read an LPAE long-descriptor translation table. */
     MMUFaultType fault_type = translation_fault;
-    uint32_t level = 1;
+    uint32_t level;
     uint32_t epd = 0;
     int32_t t0sz, t1sz;
     uint32_t tg;
@@ -7248,7 +7253,7 @@ static bool get_phys_addr_lpae(CPUARMState *env, target_ulong address,
     target_ulong page_size;
     uint32_t attrs;
     int32_t stride = 9;
-    int32_t va_size = 32;
+    int32_t va_size;
     int inputsize;
     int32_t tbi = 0;
     TCR *tcr = regime_tcr(env, mmu_idx);
@@ -7264,6 +7269,7 @@ static bool get_phys_addr_lpae(CPUARMState *env, target_ulong address,
      * support for those page table walks.
      */
     if (arm_el_is_aa64(env, el)) {
+        level = 0;
         va_size = 64;
         if (el > 1) {
             if (mmu_idx != ARMMMUIdx_S2NS) {
@@ -7285,6 +7291,8 @@ static bool get_phys_addr_lpae(CPUARMState *env, target_ulong address,
             ttbr1_valid = false;
         }
     } else {
+        level = 1;
+        va_size = 32;
         /* There is no TTBR1 for EL2 */
         if (el == 2) {
             ttbr1_valid = false;
@@ -7407,27 +7415,26 @@ static bool get_phys_addr_lpae(CPUARMState *env, target_ulong address,
         /* For stage 2 translations the starting level is specified by the
          * VTCR_EL2.SL0 field (whose interpretation depends on the page size)
          */
-        int startlevel = extract32(tcr->raw_tcr, 6, 2);
+        uint32_t sl0 = extract32(tcr->raw_tcr, 6, 2);
+        uint32_t startlevel;
         bool ok;
 
         if (va_size == 32 || stride == 9) {
             /* AArch32 or 4KB pages */
-            level = 2 - startlevel;
+            startlevel = 2 - sl0;
         } else {
             /* 16KB or 64KB pages */
-            level = 3 - startlevel;
+            startlevel = 3 - sl0;
         }
 
         /* Check that the starting level is valid. */
-        ok = check_s2_mmu_setup(cpu, va_size == 64, level, inputsize, stride);
+        ok = check_s2_mmu_setup(cpu, va_size == 64, startlevel,
+                                inputsize, stride);
         if (!ok) {
-            /* AArch64 reports these as level 0 faults.
-             * AArch32 reports these as level 1 faults.
-             */
-            level = va_size == 64 ? 0 : 1;
             fault_type = translation_fault;
             goto do_fault;
         }
+        level = startlevel;
     }
 
     /* Clear the vaddr bits which aren't part of the within-region address,

@@ -17,7 +17,9 @@
  */
 
 #include "qemu/osdep.h"
+#include "qapi/error.h"
 #include "qemu-common.h"
+#include "qemu/cutils.h"
 #include "sysemu/block-backend.h"
 #include "block/block_int.h"
 #include "block/nbd.h"
@@ -29,6 +31,7 @@
 #include "qapi/qmp/qstring.h"
 #include "qom/object_interfaces.h"
 #include "io/channel-socket.h"
+#include "crypto/init.h"
 
 #include <getopt.h>
 #include <libgen.h>
@@ -73,6 +76,7 @@ static void usage(const char *name)
 "  -e, --shared=NUM          device can be shared by NUM clients (default '1')\n"
 "  -t, --persistent          don't exit on the last connection\n"
 "  -v, --verbose             display extra debugging information\n"
+"  -x, --export-name=NAME    expose export by name\n"
 "\n"
 "Exposing part of the image:\n"
 "  -o, --offset=OFFSET       offset into the image\n"
@@ -211,7 +215,7 @@ static int find_partition(BlockBackend *blk, int partition,
 
 static void termsig_handler(int signum)
 {
-    state = TERMINATE;
+    atomic_cmpxchg(&state, RUNNING, TERMINATE);
     qemu_notify_event();
 }
 
@@ -377,12 +381,12 @@ static SocketAddress *nbd_build_socket_address(const char *sockpath,
     saddr = g_new0(SocketAddress, 1);
     if (sockpath) {
         saddr->type = SOCKET_ADDRESS_KIND_UNIX;
-        saddr->u.q_unix = g_new0(UnixSocketAddress, 1);
-        saddr->u.q_unix->path = g_strdup(sockpath);
+        saddr->u.q_unix.data = g_new0(UnixSocketAddress, 1);
+        saddr->u.q_unix.data->path = g_strdup(sockpath);
     } else {
         InetSocketAddress *inet;
         saddr->type = SOCKET_ADDRESS_KIND_INET;
-        inet = saddr->u.inet = g_new0(InetSocketAddress, 1);
+        inet = saddr->u.inet.data = g_new0(InetSocketAddress, 1);
         inet->host = g_strdup(bindto);
         if (port) {
             inet->port = g_strdup(port);
@@ -507,6 +511,7 @@ int main(int argc, char **argv)
     const char *export_name = NULL;
     const char *tlscredsid = NULL;
     bool imageOpts = false;
+    bool writethrough = true;
 
     /* The client thread uses SIGTERM to interrupt the server.  A signal
      * handler ensures that "qemu-nbd -v -c" exits with a nice status code.
@@ -515,6 +520,12 @@ int main(int argc, char **argv)
     memset(&sa_sigterm, 0, sizeof(sa_sigterm));
     sa_sigterm.sa_handler = termsig_handler;
     sigaction(SIGTERM, &sa_sigterm, NULL);
+
+    if (qcrypto_init(&local_err) < 0) {
+        error_reportf_err(local_err, "cannot initialize crypto: ");
+        exit(1);
+    }
+
     module_call_init(MODULE_INIT_QOM);
     qemu_add_opts(&qemu_object_opts);
     qemu_init_exec_dir(argv[0]);
@@ -533,7 +544,7 @@ int main(int argc, char **argv)
                 exit(EXIT_FAILURE);
             }
             seen_cache = true;
-            if (bdrv_parse_cache_flags(optarg, &flags) == -1) {
+            if (bdrv_parse_cache_mode(optarg, &flags, &writethrough) == -1) {
                 error_report("Invalid cache mode `%s'", optarg);
                 exit(EXIT_FAILURE);
             }
@@ -831,13 +842,13 @@ int main(int argc, char **argv)
         }
         options = qemu_opts_to_qdict(opts, NULL);
         qemu_opts_reset(&file_opts);
-        blk = blk_new_open("hda", NULL, NULL, options, flags, &local_err);
+        blk = blk_new_open(NULL, NULL, options, flags, &local_err);
     } else {
         if (fmt) {
             options = qdict_new();
             qdict_put(options, "driver", qstring_from_str(fmt));
         }
-        blk = blk_new_open("hda", srcpath, NULL, options, flags, &local_err);
+        blk = blk_new_open(srcpath, NULL, options, flags, &local_err);
     }
 
     if (!blk) {
@@ -846,6 +857,8 @@ int main(int argc, char **argv)
         exit(EXIT_FAILURE);
     }
     bs = blk_bs(blk);
+
+    blk_set_enable_write_cache(blk, !writethrough);
 
     if (sn_opts) {
         ret = bdrv_snapshot_load_tmp(bs,

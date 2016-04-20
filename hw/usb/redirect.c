@@ -26,6 +26,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "qapi/error.h"
 #include "qemu-common.h"
 #include "qemu/timer.h"
 #include "sysemu/sysemu.h"
@@ -34,11 +35,13 @@
 #include "qemu/iov.h"
 #include "sysemu/char.h"
 
-#include <sys/ioctl.h>
 #include <usbredirparser.h>
 #include <usbredirfilter.h>
 
 #include "hw/usb.h"
+
+/* ERROR is defined below. Remove any previous definition. */
+#undef ERROR
 
 #define MAX_ENDPOINTS 32
 #define NO_INTERFACE_INFO 255 /* Valid interface_count always <= 32 */

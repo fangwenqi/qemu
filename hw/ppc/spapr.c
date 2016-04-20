@@ -25,6 +25,7 @@
  *
  */
 #include "qemu/osdep.h"
+#include "qapi/error.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/numa.h"
 #include "hw/hw.h"
@@ -63,7 +64,7 @@
 #include "hw/nmi.h"
 
 #include "hw/compat.h"
-#include "qemu-common.h"
+#include "qemu/cutils.h"
 
 #include <libfdt.h>
 
@@ -439,7 +440,7 @@ static void *spapr_create_fdt_skel(hwaddr initrd_base,
     _FDT((fdt_property_cell(fdt, "rtas-event-scan-rate",
                             RTAS_EVENT_SCAN_RATE)));
 
-    if (msi_supported) {
+    if (msi_nonbroken) {
         _FDT((fdt_property(fdt, "ibm,change-msix-capable", NULL, 0)));
     }
 
@@ -497,10 +498,11 @@ static void *spapr_create_fdt_skel(hwaddr initrd_base,
              * Older KVM versions with older guest kernels were broken with the
              * magic page, don't allow the guest to map it.
              */
-            kvmppc_get_hypercall(first_cpu->env_ptr, hypercall,
-                                 sizeof(hypercall));
-            _FDT((fdt_property(fdt, "hcall-instructions", hypercall,
-                              sizeof(hypercall))));
+            if (!kvmppc_get_hypercall(first_cpu->env_ptr, hypercall,
+                                      sizeof(hypercall))) {
+                _FDT((fdt_property(fdt, "hcall-instructions", hypercall,
+                                   sizeof(hypercall))));
+            }
         }
         _FDT((fdt_end_node(fdt)));
     }
@@ -1091,7 +1093,7 @@ static void spapr_reallocate_hpt(sPAPRMachineState *spapr, int shift,
         }
 
         spapr->htab_shift = shift;
-        kvmppc_kern_htab = true;
+        spapr->htab = NULL;
     } else {
         /* kernel-side HPT not needed, allocate in userspace instead */
         size_t size = 1ULL << shift;
@@ -1106,7 +1108,6 @@ static void spapr_reallocate_hpt(sPAPRMachineState *spapr, int shift,
 
         memset(spapr->htab, 0, size);
         spapr->htab_shift = shift;
-        kvmppc_kern_htab = false;
 
         for (i = 0; i < size / HASH_PTE_SIZE_64; i++) {
             DIRTY_HPTE(HPTE(spapr->htab, i));
@@ -1196,17 +1197,8 @@ static void spapr_cpu_reset(void *opaque)
 
     env->spr[SPR_HIOR] = 0;
 
-    env->external_htab = (uint8_t *)spapr->htab;
-    env->htab_base = -1;
-    /*
-     * htab_mask is the mask used to normalize hash value to PTEG index.
-     * htab_shift is log2 of hash table size.
-     * We have 8 hpte per group, and each hpte is 16 bytes.
-     * ie have 128 bytes per hpte entry.
-     */
-    env->htab_mask = (1ULL << (spapr->htab_shift - 7)) - 1;
-    env->spr[SPR_SDR1] = (target_ulong)(uintptr_t)spapr->htab |
-        (spapr->htab_shift - 18);
+    ppc_hash64_set_external_hpt(cpu, spapr->htab, spapr->htab_shift,
+                                &error_fatal);
 }
 
 static void spapr_create_nvram(sPAPRMachineState *spapr)
@@ -1622,15 +1614,8 @@ static void spapr_cpu_init(sPAPRMachineState *spapr, PowerPCCPU *cpu,
     /* Set time-base frequency to 512 MHz */
     cpu_ppc_tb_init(env, TIMEBASE_FREQ);
 
-    /* PAPR always has exception vectors in RAM not ROM. To ensure this,
-     * MSR[IP] should never be set.
-     */
-    env->msr_mask &= ~(1 << 6);
-
-    /* Tell KVM that we're in PAPR mode */
-    if (kvm_enabled()) {
-        kvmppc_set_papr(cpu);
-    }
+    /* Enable PAPR mode in TCG or KVM */
+    cpu_ppc_set_papr(cpu);
 
     if (cpu->max_compat) {
         Error *local_err = NULL;
@@ -1743,7 +1728,7 @@ static void ppc_spapr_init(MachineState *machine)
     bool kernel_le = false;
     char *filename;
 
-    msi_supported = true;
+    msi_nonbroken = true;
 
     QLIST_INIT(&spapr->phbs);
 
@@ -2223,6 +2208,10 @@ static void spapr_machine_device_plug(HotplugHandler *hotplug_dev,
         if (*errp) {
             return;
         }
+        if (node < 0 || node >= MAX_NODES) {
+            error_setg(errp, "Invaild node %d", node);
+            return;
+        }
 
         /*
          * Currently PowerPC kernel doesn't allow hot-adding memory to
@@ -2352,7 +2341,7 @@ static const TypeInfo spapr_machine_info = {
     {                                                                \
         type_register(&spapr_machine_##suffix##_info);               \
     }                                                                \
-    machine_init(spapr_machine_register_##suffix)
+    type_init(spapr_machine_register_##suffix)
 
 /*
  * pseries-2.6
@@ -2372,7 +2361,12 @@ DEFINE_SPAPR_MACHINE(2_6, "2.6", true);
  * pseries-2.5
  */
 #define SPAPR_COMPAT_2_5 \
-        HW_COMPAT_2_5
+    HW_COMPAT_2_5 \
+    { \
+        .driver   = "spapr-vlan", \
+        .property = "use-rx-buffer-pools", \
+        .value    = "off", \
+    },
 
 static void spapr_machine_2_5_instance_options(MachineState *machine)
 {

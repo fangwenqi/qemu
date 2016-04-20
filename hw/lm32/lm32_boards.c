@@ -18,6 +18,8 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu-common.h"
+#include "cpu.h"
 #include "hw/sysbus.h"
 #include "hw/hw.h"
 #include "hw/block/flash.h"
@@ -329,4 +331,4 @@ static void lm32_machine_init(void)
     type_register_static(&lm32_uclinux_type);
 }
 
-machine_init(lm32_machine_init)
+type_init(lm32_machine_init)

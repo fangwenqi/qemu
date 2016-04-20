@@ -1,4 +1,5 @@
 #include "qemu/osdep.h"
+#include "qapi/error.h"
 #include "sysemu/sysemu.h"
 #include "cpu.h"
 #include "helper_regs.h"
@@ -122,17 +123,17 @@ static target_ulong h_enter(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                 break;
             }
         }
-        ppc_hash64_stop_access(token);
+        ppc_hash64_stop_access(cpu, token);
         if (index == 8) {
             return H_PTEG_FULL;
         }
     } else {
         token = ppc_hash64_start_access(cpu, pte_index);
         if (ppc_hash64_load_hpte0(cpu, token, 0) & HPTE64_V_VALID) {
-            ppc_hash64_stop_access(token);
+            ppc_hash64_stop_access(cpu, token);
             return H_PTEG_FULL;
         }
-        ppc_hash64_stop_access(token);
+        ppc_hash64_stop_access(cpu, token);
     }
 
     ppc_hash64_store_hpte(cpu, pte_index + index,
@@ -165,7 +166,7 @@ static RemoveResult remove_hpte(PowerPCCPU *cpu, target_ulong ptex,
     token = ppc_hash64_start_access(cpu, ptex);
     v = ppc_hash64_load_hpte0(cpu, token, 0);
     r = ppc_hash64_load_hpte1(cpu, token, 0);
-    ppc_hash64_stop_access(token);
+    ppc_hash64_stop_access(cpu, token);
 
     if ((v & HPTE64_V_VALID) == 0 ||
         ((flags & H_AVPN) && (v & ~0x7fULL) != avpn) ||
@@ -288,7 +289,7 @@ static target_ulong h_protect(PowerPCCPU *cpu, sPAPRMachineState *spapr,
     token = ppc_hash64_start_access(cpu, pte_index);
     v = ppc_hash64_load_hpte0(cpu, token, 0);
     r = ppc_hash64_load_hpte1(cpu, token, 0);
-    ppc_hash64_stop_access(token);
+    ppc_hash64_stop_access(cpu, token);
 
     if ((v & HPTE64_V_VALID) == 0 ||
         ((flags & H_AVPN) && (v & ~0x7fULL) != avpn)) {
@@ -823,7 +824,6 @@ static target_ulong h_set_mode_resource_addr_trans_mode(PowerPCCPU *cpu,
 {
     CPUState *cs;
     PowerPCCPUClass *pcc = POWERPC_CPU_GET_CLASS(cpu);
-    target_ulong prefix;
 
     if (!(pcc->insns_flags2 & PPC2_ISA207S)) {
         return H_P2;
@@ -835,25 +835,12 @@ static target_ulong h_set_mode_resource_addr_trans_mode(PowerPCCPU *cpu,
         return H_P4;
     }
 
-    switch (mflags) {
-    case H_SET_MODE_ADDR_TRANS_NONE:
-        prefix = 0;
-        break;
-    case H_SET_MODE_ADDR_TRANS_0001_8000:
-        prefix = 0x18000;
-        break;
-    case H_SET_MODE_ADDR_TRANS_C000_0000_0000_4000:
-        prefix = 0xC000000000004000ULL;
-        break;
-    default:
+    if (mflags == AIL_RESERVED) {
         return H_UNSUPPORTED_FLAG;
     }
 
     CPU_FOREACH(cs) {
-        CPUPPCState *env = &POWERPC_CPU(cpu)->env;
-
         set_spr(cs, SPR_LPCR, mflags << LPCR_AIL_SHIFT, LPCR_AIL);
-        env->excp_prefix = prefix;
     }
 
     return H_SUCCESS;

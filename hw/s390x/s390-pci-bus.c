@@ -12,6 +12,8 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu-common.h"
+#include "cpu.h"
 #include "s390-pci-bus.h"
 #include <hw/pci/pci_bus.h>
 #include <hw/pci/msi.h>
@@ -597,7 +599,7 @@ static void s390_pcihost_class_init(ObjectClass *klass, void *data)
     k->init = s390_pcihost_init;
     hc->plug = s390_pcihost_hot_plug;
     hc->unplug = s390_pcihost_hot_unplug;
-    msi_supported = true;
+    msi_nonbroken = true;
 }
 
 static const TypeInfo s390_pcihost_info = {

@@ -26,6 +26,7 @@
 #include "hw/virtio/virtio-balloon.h"
 #include "hw/virtio/virtio-input.h"
 #include "hw/pci/pci.h"
+#include "qapi/error.h"
 #include "qemu/error-report.h"
 #include "hw/pci/msi.h"
 #include "hw/pci/msix.h"
@@ -47,6 +48,7 @@
 
 static void virtio_pci_bus_new(VirtioBusState *bus, size_t bus_size,
                                VirtIOPCIProxy *dev);
+static void virtio_pci_reset(DeviceState *qdev);
 
 /* virtio device */
 /* DeviceState to VirtIOPCIProxy. For use off data-path. TODO: use QOM. */
@@ -404,9 +406,7 @@ static void virtio_ioport_write(void *opaque, uint32_t addr, uint32_t val)
     case VIRTIO_PCI_QUEUE_PFN:
         pa = (hwaddr)val << VIRTIO_PCI_QUEUE_ADDR_SHIFT;
         if (pa == 0) {
-            virtio_pci_stop_ioeventfd(proxy);
-            virtio_reset(vdev);
-            msix_unuse_all_vectors(&proxy->pci_dev);
+            virtio_pci_reset(DEVICE(proxy));
         }
         else
             virtio_queue_set_addr(vdev, vdev->queue_sel, pa);
@@ -432,8 +432,7 @@ static void virtio_ioport_write(void *opaque, uint32_t addr, uint32_t val)
         }
 
         if (vdev->status == 0) {
-            virtio_reset(vdev);
-            msix_unuse_all_vectors(&proxy->pci_dev);
+            virtio_pci_reset(DEVICE(proxy));
         }
 
         /* Linux before 2.6.34 drives the device without enabling
@@ -1353,8 +1352,7 @@ static void virtio_pci_common_write(void *opaque, hwaddr addr,
         }
 
         if (vdev->status == 0) {
-            virtio_reset(vdev);
-            msix_unuse_all_vectors(&proxy->pci_dev);
+            virtio_pci_reset(DEVICE(proxy));
         }
 
         break;

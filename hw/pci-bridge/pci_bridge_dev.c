@@ -20,6 +20,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "qapi/error.h"
 #include "hw/pci/pci_bridge.h"
 #include "hw/pci/pci_ids.h"
 #include "hw/pci/msi.h"
@@ -72,7 +73,7 @@ static int pci_bridge_dev_initfn(PCIDevice *dev)
         goto slotid_error;
     }
     if ((bridge_dev->flags & (1 << PCI_BRIDGE_DEV_F_MSI_REQ)) &&
-        msi_supported) {
+        msi_nonbroken) {
         err = msi_init(dev, 0, 1, true, true);
         if (err < 0) {
             goto msi_error;

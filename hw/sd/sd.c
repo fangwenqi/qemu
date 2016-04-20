@@ -34,6 +34,7 @@
 #include "hw/hw.h"
 #include "sysemu/block-backend.h"
 #include "hw/sd/sd.h"
+#include "qapi/error.h"
 #include "qemu/bitmap.h"
 #include "hw/qdev-properties.h"
 #include "qemu/error-report.h"
@@ -563,17 +564,19 @@ static const VMStateDescription sd_vmstate = {
 /* Legacy initialization function for use by non-qdevified callers */
 SDState *sd_init(BlockBackend *blk, bool is_spi)
 {
+    Object *obj;
     DeviceState *dev;
     Error *err = NULL;
 
-    dev = qdev_create(NULL, TYPE_SD_CARD);
+    obj = object_new(TYPE_SD_CARD);
+    dev = DEVICE(obj);
     qdev_prop_set_drive(dev, "drive", blk, &err);
     if (err) {
         error_report("sd_init failed: %s", error_get_pretty(err));
         return NULL;
     }
     qdev_prop_set_bit(dev, "spi", is_spi);
-    object_property_set_bool(OBJECT(dev), true, "realized", &err);
+    object_property_set_bool(obj, true, "realized", &err);
     if (err) {
         error_report("sd_init failed: %s", error_get_pretty(err));
         return NULL;

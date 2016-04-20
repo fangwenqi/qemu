@@ -278,7 +278,8 @@ Guest CPU Cores (Xen):
 ----------------------
 
 X86
-M: Stefano Stabellini <stefano.stabellini@eu.citrix.com>
+M: Stefano Stabellini <sstabellini@kernel.org>
+M: Anthony Perard <anthony.perard@citrix.com>
 L: xen-devel@lists.xensource.com
 S: Supported
 F: xen-*
@@ -357,10 +358,7 @@ F: include/hw/timer/a9gtimer.h
 F: include/hw/timer/arm_mptimer.h
 
 Exynos
-M: Evgeny Voevodin <e.voevodin@samsung.com>
-M: Maksim Kozlov <m.kozlov@samsung.com>
 M: Igor Mitsyanko <i.mitsyanko@gmail.com>
-M: Dmitry Solodkiy <d.solodkiy@samsung.com>
 L: qemu-arm@nongnu.org
 S: Maintained
 F: hw/*/exynos*
@@ -717,6 +715,12 @@ F: hw/timer/hpet*
 F: hw/timer/i8254*
 F: hw/timer/mc146818rtc*
 
+Machine core
+M: Eduardo Habkost <ehabkost@redhat.com>
+M: Marcel Apfelbaum <marcel@redhat.com>
+S: Supported
+F: hw/core/machine.c
+F: include/hw/boards.h
 
 Xtensa Machines
 ---------------
@@ -866,6 +870,7 @@ VFIO
 M: Alex Williamson <alex.williamson@redhat.com>
 S: Supported
 F: hw/vfio/*
+F: include/hw/vfio/
 
 vhost
 M: Michael S. Tsirkin <mst@redhat.com>
@@ -877,6 +882,7 @@ M: Michael S. Tsirkin <mst@redhat.com>
 S: Supported
 F: hw/*/virtio*
 F: net/vhost-user.c
+F: include/hw/virtio/
 
 virtio-9p
 M: Aneesh Kumar K.V <aneesh.kumar@linux.vnet.ibm.com>
@@ -979,6 +985,7 @@ F: tests/intel-hda-test.c
 
 Block layer core
 M: Kevin Wolf <kwolf@redhat.com>
+M: Max Reitz <mreitz@redhat.com>
 L: qemu-block@nongnu.org
 S: Supported
 F: block*
@@ -992,6 +999,7 @@ T: git git://repo.or.cz/qemu/kevin.git block
 
 Block I/O path
 M: Stefan Hajnoczi <stefanha@redhat.com>
+M: Fam Zheng <famz@redhat.com>
 L: qemu-block@nongnu.org
 S: Supported
 F: async.c
@@ -1008,7 +1016,7 @@ F: blockjob.c
 F: include/block/blockjob.h
 F: block/backup.c
 F: block/commit.c
-F: block/stream.h
+F: block/stream.c
 F: block/mirror.c
 T: git git://github.com/codyprime/qemu-kvm-jtc.git block
 
@@ -1042,7 +1050,6 @@ M: Andreas Färber <afaerber@suse.de>
 S: Supported
 F: qom/cpu.c
 F: include/qom/cpu.h
-F: target-i386/cpu.c
 
 ICC Bus
 M: Igor Mammedov <imammedo@redhat.com>
@@ -1562,6 +1569,7 @@ F: block/win32-aio.c
 
 qcow2
 M: Kevin Wolf <kwolf@redhat.com>
+M: Max Reitz <mreitz@redhat.com>
 L: qemu-block@nongnu.org
 S: Supported
 F: block/qcow2*
@@ -1574,6 +1582,7 @@ F: block/qcow.c
 
 blkdebug
 M: Kevin Wolf <kwolf@redhat.com>
+M: Max Reitz <mreitz@redhat.com>
 L: qemu-block@nongnu.org
 S: Supported
 F: block/blkdebug.c
